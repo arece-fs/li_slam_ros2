@@ -118,6 +118,8 @@ private:
 
   vector<int> columnIdnCountVec;
 
+  bool hasReceivedIMU = false;
+
 public:
   ImageProjection(const rclcpp::NodeOptions & options)
   : ParamServer("image_projection", options),
@@ -126,6 +128,7 @@ public:
     auto imu_callback =
       [this](const sensor_msgs::msg::Imu::ConstPtr msg) -> void
       {
+        hasReceivedIMU = true;
         imuHandler(msg);
       };
     subImu = create_subscription<sensor_msgs::msg::Imu>(
@@ -146,7 +149,7 @@ public:
       pointCloudTopic, 5, lc_callback);
 
     pubExtractedCloud = create_publisher<sensor_msgs::msg::PointCloud2>("cloud_deskewed", 2000);
-
+    
     allocateMemory();
     resetParameters();
 
@@ -188,6 +191,7 @@ public:
 
   void imuHandler(const sensor_msgs::msg::Imu::ConstPtr & imuMsg)
   {
+    std::cout << "IMU BONOJJOURURU" << std::endl;
     sensor_msgs::msg::Imu thisImu = imuConverter(*imuMsg);
 
     std::lock_guard<std::mutex> lock1(imuLock);
@@ -219,6 +223,11 @@ public:
 
   void cloudHandler(const sensor_msgs::msg::PointCloud2::ConstPtr & laserCloudMsg)
   {
+    std::cout << "CLOUD BONOJJOURURU" << std::endl;
+    if(!hasReceivedIMU) {
+      return;
+    }
+    
     if (!cachePointCloud(laserCloudMsg)) {
       return;
     }
@@ -226,13 +235,13 @@ public:
     if (!deskewInfo()) {
       return;
     }
-
+    std::cout << "PRINT 1" << std::endl;
     projectPointCloud();
-
+    std::cout << "PRINT 2" << std::endl;
     cloudExtraction();
-
+    std::cout << "PRINT 3" << std::endl;
     publishCloud();
-
+    std::cout << "PRINT 4" << std::endl;
     resetParameters();
   }
 
