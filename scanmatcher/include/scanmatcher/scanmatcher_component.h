@@ -128,6 +128,11 @@ private:
     void receiveCloud(
       const pcl::PointCloud < PointType > ::ConstPtr & input_cloud_ptr,
       const rclcpp::Time stamp);
+    void getCovariance(
+      const pcl::PointCloud < PointType >::ConstPtr & cloud_in,
+      const pcl::PointCloud < PointType >::ConstPtr & cloud_out
+    );
+    void calculateIcpCov(pcl::PointCloud<PointType>& data_pi, pcl::PointCloud<PointType>& model_qi, Eigen::Matrix4f& transform, Eigen::MatrixXd& ICP_COV);
     void receiveImu(const sensor_msgs::msg::Imu imu_msg);
     void receiveOdom(const nav_msgs::msg::Odometry odom_msg);
     void publishMapAndPose(

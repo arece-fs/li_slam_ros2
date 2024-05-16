@@ -118,6 +118,8 @@ private:
 
   vector<int> columnIdnCountVec;
 
+  bool hasReceivedIMU = false;
+
 public:
   ImageProjection(const rclcpp::NodeOptions & options)
   : ParamServer("image_projection", options),
@@ -126,6 +128,7 @@ public:
     auto imu_callback =
       [this](const sensor_msgs::msg::Imu::ConstPtr msg) -> void
       {
+        hasReceivedIMU = true;
         imuHandler(msg);
       };
     subImu = create_subscription<sensor_msgs::msg::Imu>(
@@ -219,6 +222,9 @@ public:
 
   void cloudHandler(const sensor_msgs::msg::PointCloud2::ConstPtr & laserCloudMsg)
   {
+    if(!hasReceivedIMU) {
+      return;
+    }
     if (!cachePointCloud(laserCloudMsg)) {
       return;
     }
