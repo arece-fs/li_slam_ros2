@@ -9,14 +9,20 @@ namespace graphslam
 ScanMatcherComponent::ScanMatcherComponent(const rclcpp::NodeOptions & options)
 : Node("scan_matcher", options),
   clock_(RCL_ROS_TIME),
-  tfbuffer_(std::make_shared<rclcpp::Clock>(clock_)),
-  listener_(tfbuffer_),
   broadcaster_(this)
 {
   std::string registration_method;
   double ndt_resolution;
   int ndt_num_threads;
   double gicp_corr_dist_threshold;
+
+  tfbuffer_ =
+      std::make_unique<tf2_ros::Buffer>(this->get_clock());
+  listener_ =
+      std::make_shared<tf2_ros::TransformListener>(*tfbuffer_);
+
+  declare_parameter("velodyne_frame_id","velodyne");
+  get_parameter("velodyne_frame_id",velodyne_frame_id_);
 
   declare_parameter("global_frame_id", "map");
   get_parameter("global_frame_id", global_frame_id_);
@@ -182,7 +188,7 @@ void ScanMatcherComponent::initializePubSub()
         tf2::TimePoint time_point = tf2::TimePoint(
           std::chrono::seconds(msg->header.stamp.sec) +
           std::chrono::nanoseconds(msg->header.stamp.nanosec));
-        const geometry_msgs::msg::TransformStamped transform = tfbuffer_.lookupTransform(
+        const geometry_msgs::msg::TransformStamped transform = tfbuffer_->lookupTransform(
           robot_frame_id_, msg->header.frame_id, time_point);
         tf2::doTransform(*msg, transformed_msg, transform); // TODO:slow now(https://github.com/ros/geometry2/pull/432)
       } catch (tf2::TransformException & e) {
@@ -206,7 +212,8 @@ void ScanMatcherComponent::initializePubSub()
         RCLCPP_INFO(get_logger(), "initial_cloud is received");
         initial_cloud_received_ = true;
         initializeMap(tmp_ptr, msg->header);
-        last_map_time_ = clock_.now();
+        // last_map_time_ = clock_.now();
+        last_map_time_ = this->get_clock()->now();
       }
 
       if (initial_cloud_received_) {receiveCloud(tmp_ptr, msg->header.stamp);}
@@ -317,7 +324,7 @@ void ScanMatcherComponent::receiveCloud(
   if (use_odom_) {
     geometry_msgs::msg::TransformStamped odom_trans;
     try {
-      odom_trans = tfbuffer_.lookupTransform(
+      odom_trans = tfbuffer_->lookupTransform(
         odom_frame_id_, robot_frame_id_, tf2_ros::fromMsg(
           stamp));
     } catch (tf2::TransformException & e) {
@@ -351,10 +358,11 @@ void ScanMatcherComponent::receiveCloud(
 
   Eigen::Matrix4f final_transformation = registration_->getFinalTransformation();
 
+  Eigen::MatrixXd ICP_COV(6,6);
 
-  getCovariance(filtered_cloud_ptr,output_cloud);
+  ICP_COV = getCovariance(filtered_cloud_ptr,output_cloud);
 
-  publishMapAndPose(cloud_ptr, final_transformation, stamp);
+  publishMapAndPose(cloud_ptr, final_transformation,ICP_COV, stamp);
 
   if (!debug_flag_) {return;}
 
@@ -385,7 +393,7 @@ void ScanMatcherComponent::receiveCloud(
   std::cout << "---------------------------------------------------------" << std::endl;
 }
 
-void ScanMatcherComponent::getCovariance(
+Eigen::MatrixXd ScanMatcherComponent::getCovariance(
   const pcl::PointCloud < PointType >::ConstPtr & cloud_in,
   const pcl::PointCloud < PointType >::ConstPtr & cloud_out)
 {
@@ -446,7 +454,7 @@ void ScanMatcherComponent::getCovariance(
 
 
     calculateIcpCov(data_pi, model_qi, final_transformation, ICP_COV);
-
+    return ICP_COV;
 }
 
 
@@ -1006,7 +1014,7 @@ d2J_dxdc    d2J_dydc    d2J_dzdc   d2J_dadc   d2J_dbdc   d2J_dc2
 
 void ScanMatcherComponent::publishMapAndPose(
   const pcl::PointCloud<PointType>::ConstPtr & cloud_ptr,
-  const Eigen::Matrix4f final_transformation, const rclcpp::Time stamp)
+  const Eigen::Matrix4f final_transformation,Eigen::MatrixXd ICP_COV, const rclcpp::Time stamp)
 {
 
   Eigen::Vector3d position = final_transformation.block<3, 1>(0, 3).cast<double>();
@@ -1017,7 +1025,7 @@ void ScanMatcherComponent::publishMapAndPose(
 
   geometry_msgs::msg::TransformStamped transform_stamped;
   transform_stamped.header.stamp = stamp;
-  transform_stamped.header.frame_id = global_frame_id_;
+  transform_stamped.header.frame_id = odom_frame_id_;
   transform_stamped.child_frame_id = robot_frame_id_;
   transform_stamped.transform.translation.x = position.x();
   transform_stamped.transform.translation.y = position.y();
@@ -1035,6 +1043,16 @@ void ScanMatcherComponent::publishMapAndPose(
   nav_msgs::msg::Odometry odom;
   odom.header = transform_stamped.header;
   odom.pose.pose = corrent_pose_stamped_.pose;
+
+  ICP_COV = ICP_COV.cwiseAbs();
+
+  std::copy(ICP_COV.data(), ICP_COV.data() + ICP_COV.size(), odom.pose.covariance.begin());
+
+//   for(auto &elem : odom.pose.covariance)
+//   {
+//     elem = 0.01;
+//   }
+  
   odom.twist = odom_que_[odom_ptr_front_].twist;
   odom_pub_->publish(odom);
 
@@ -1104,7 +1122,8 @@ void ScanMatcherComponent::updateMap(
 
   is_map_updated_ = true;
 
-  rclcpp::Time map_time = clock_.now();
+//   rclcpp::Time map_time = clock_.now();
+  rclcpp::Time map_time = this->get_clock()->now();
   double dt = map_time.seconds() - last_map_time_.seconds();
   if (dt > map_publish_period_) {
     publishMap(map_array_msg_, global_frame_id_);

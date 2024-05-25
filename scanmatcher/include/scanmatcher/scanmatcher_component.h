@@ -89,13 +89,14 @@ public:
 
 private:
     rclcpp::Clock clock_;
-    tf2_ros::Buffer tfbuffer_;
-    tf2_ros::TransformListener listener_;
+    std::shared_ptr<tf2_ros::TransformListener> listener_{nullptr};
+    std::unique_ptr<tf2_ros::Buffer> tfbuffer_;
     tf2_ros::TransformBroadcaster broadcaster_;
 
     std::string global_frame_id_;
     std::string robot_frame_id_;
     std::string odom_frame_id_;
+    std::string velodyne_frame_id_;
 
     // pcl::Registration < PointType, PointType > ::Ptr registration_;
     boost::shared_ptr<pcl::Registration < PointType, PointType >> registration_;
@@ -128,7 +129,7 @@ private:
     void receiveCloud(
       const pcl::PointCloud < PointType > ::ConstPtr & input_cloud_ptr,
       const rclcpp::Time stamp);
-    void getCovariance(
+    Eigen::MatrixXd getCovariance(
       const pcl::PointCloud < PointType >::ConstPtr & cloud_in,
       const pcl::PointCloud < PointType >::ConstPtr & cloud_out
     );
@@ -138,6 +139,7 @@ private:
     void publishMapAndPose(
       const pcl::PointCloud < PointType > ::ConstPtr & cloud_ptr,
       const Eigen::Matrix4f final_transformation,
+      Eigen::MatrixXd ICP_COV,
       const rclcpp::Time stamp
     );
     Eigen::Matrix4f getTransformation(const geometry_msgs::msg::Pose pose);

@@ -673,7 +673,7 @@ public:
     sensor_msgs::msg::PointCloud2 tempCloud;
     pcl::toROSMsg(*extractedCloud, tempCloud);
     tempCloud.header.stamp = cloudHeader.stamp;
-    tempCloud.header.frame_id = "base_link";
+    tempCloud.header.frame_id = velodyne_frame_id_;
     pubExtractedCloud->publish(tempCloud);
   }
 

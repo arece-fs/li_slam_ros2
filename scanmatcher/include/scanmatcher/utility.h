@@ -101,6 +101,7 @@ public:
   string pointCloudTopic;
   string imuTopic;
   string odomTopic;
+  string velodyne_frame_id_; 
 
   // Lidar Sensor Configuration
   SensorType sensor;
@@ -124,6 +125,8 @@ public:
   ParamServer(std::string node_name, const rclcpp::NodeOptions & options)
     : Node(node_name, options)
   {
+    declare_parameter("sensor_frame_id", "velodyne");
+    get_parameter("sensor_frame_id", velodyne_frame_id_);
     declare_parameter("pointCloudTopic", "points_raw");
     get_parameter("pointCloudTopic", pointCloudTopic);
     declare_parameter("imuTopic", "imu_correct");
